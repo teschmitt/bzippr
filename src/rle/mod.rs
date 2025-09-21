@@ -4,8 +4,18 @@ pub(crate) struct RleRun {
     pub(crate) count: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RleSequence(Vec<RleRun>);
+
+impl RleSequence {
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub(crate) fn empty() -> Self {
+        RleSequence(Vec::new())
+    }
+}
 
 impl From<&[u8]> for RleSequence {
     fn from(data: &[u8]) -> Self {
