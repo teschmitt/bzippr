@@ -27,6 +27,9 @@ fn main() -> Result<()> {
     let data = std::fs::read(&args.file_path)?;
 
     let rle_sequence = RleSequence::from(&data[..]);
+
+    println!("Length of RLE sequence: {}", rle_sequence.len());
+
     let decompressed_data: Vec<u8> = rle_sequence.into();
     assert_eq!(data, decompressed_data);
 
