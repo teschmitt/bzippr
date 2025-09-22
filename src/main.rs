@@ -1,3 +1,4 @@
+#[warn(dead_code)]
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -5,6 +6,7 @@ use clap::Parser;
 
 use rle::RleSequence;
 
+mod bwt;
 mod rle;
 
 #[derive(Parser, Debug)]

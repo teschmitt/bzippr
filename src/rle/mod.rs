@@ -1,7 +1,7 @@
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RleRun {
     pub(crate) value: u8,
-    pub(crate) count: u64,
+    pub(crate) count: usize,
 }
 
 #[derive(Debug, PartialEq, Eq)]
