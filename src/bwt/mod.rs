@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Ok, Result, anyhow};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BwtEncoded {
@@ -14,12 +14,43 @@ impl TryFrom<&[u8]> for BwtEncoded {
             return Ok(BwtEncoded::empty());
         }
         let mut shifts = get_shifts(data)?;
-        let original_index = sort_shifts(&mut shifts);
+        let original_index = sort_table(&mut shifts);
         let last_column: Vec<u8> = shifts
             .iter()
             .map(|shift| shift.last().copied().ok_or(anyhow!("Shift is empty")))
             .collect::<Result<Vec<u8>>>()?;
         Ok(BwtEncoded::new(last_column, original_index))
+    }
+}
+
+impl TryInto<Vec<u8>> for BwtEncoded {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<Vec<u8>> {
+        let data_length = self.len();
+        if data_length == 0 {
+            return Ok(Vec::new());
+        }
+        let mut data_table: Vec<Vec<u8>> = Vec::with_capacity(data_length);
+
+        for _ in 0..data_length {
+            data_table.push(vec![0; data_length]);
+        }
+
+        for col in (0..self.len()).rev() {
+            for row in 0..self.len() {
+                data_table[row][col] = self.try_get(row)?;
+            }
+            sort_table(&mut data_table);
+        }
+
+        Ok(data_table
+            .get(self.original_index)
+            .ok_or(anyhow!(
+                "Original index out of bounds: {}",
+                self.original_index
+            ))?
+            .clone())
     }
 }
 
@@ -45,6 +76,13 @@ impl BwtEncoded {
             original_index: 0,
         }
     }
+
+    fn try_get(&self, index: usize) -> Result<u8> {
+        self.data
+            .get(index)
+            .copied()
+            .ok_or(anyhow!("Index out of bounds: {}", index))
+    }
 }
 
 fn get_from_index(data: &[u8], index: usize) -> Result<Vec<u8>> {
@@ -57,11 +95,8 @@ fn get_from_index(data: &[u8], index: usize) -> Result<Vec<u8>> {
                 .get(current_index)
                 .ok_or(anyhow!("Index out of bounds: {}", current_index))?,
         );
-        // In a real BWT implementation, we would use a more complex method to find the next index.
-        // Here, we just simulate it by moving to the next index in a circular manner.
         current_index = (current_index + 1) % data_length;
     }
-    // result.reverse();
     Ok(result)
 }
 
@@ -77,7 +112,7 @@ fn get_shifts(data: &[u8]) -> Result<Vec<Vec<u8>>> {
     Ok(ret)
 }
 
-fn sort_shifts(data_table: &mut Vec<Vec<u8>>) -> usize {
+fn sort_table(data_table: &mut Vec<Vec<u8>>) -> usize {
     if data_table.is_empty() || data_table.len() == 1 {
         return 0;
     }
@@ -124,9 +159,30 @@ mod tests {
     #[test_case(vec![b"sadfiuasdiufasiudfnasdf".to_vec()], vec![b"sadfiuasdiufasiudfnasdf".to_vec()] => 0; "one element")]
     #[test_case(vec![vec![100, 1], vec![1, 100]], vec![vec![1, 100], vec![100, 1]] => 1; "switch entries")]
     #[test_case(vec![vec![1, 100], vec![100, 1]], vec![vec![1, 100], vec![100, 1]] => 0; "already sorted")]
-    fn test_sort_shifts_success(mut input: Vec<Vec<u8>>, expected: Vec<Vec<u8>>) -> usize {
-        let idx = sort_shifts(&mut input);
+    fn test_sort_table(mut input: Vec<Vec<u8>>, expected: Vec<Vec<u8>>) -> usize {
+        let idx = sort_table(&mut input);
         assert_eq!(input, expected);
         idx
+    }
+
+    #[test_case(BwtEncoded { data: b"baa".to_vec(), original_index: 1 }, b"aba".to_vec(); "three bytes")]
+    #[test_case(BwtEncoded { data: b"bczba".to_vec(), original_index: 4 }, b"zbcba".to_vec(); "five bytes")]
+    #[test_case(BwtEncoded { data: b"a".to_vec(), original_index: 0 }, b"a".to_vec(); "single byte")]
+    #[test_case(BwtEncoded { data: b"aaa".to_vec(), original_index: 0 }, b"aaa".to_vec(); "three identical bytes")]
+    #[test_case(BwtEncoded { data: b"".to_vec(), original_index: 0 }, b"".to_vec(); "empty")]
+    fn test_bwt_decode(encoded: BwtEncoded, expected: Vec<u8>) {
+        let decoded: Vec<u8> = encoded.try_into().unwrap();
+        assert_eq!(decoded, expected);
+    }
+
+    #[test_case(b"baa"; "three bytes")]
+    #[test_case(b"bczba"; "five bytes")]
+    #[test_case(b"a"; "single byte")]
+    #[test_case(b"aaa"; "three identical bytes")]
+    #[test_case(b""; "empty")]
+    fn test_roundtrip(data: &[u8]) {
+        let encoded: BwtEncoded = data.try_into().unwrap();
+        let decoded: Vec<u8> = encoded.try_into().unwrap();
+        assert_eq!(decoded, data);
     }
 }
