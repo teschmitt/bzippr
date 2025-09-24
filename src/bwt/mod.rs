@@ -14,7 +14,7 @@ impl TryFrom<&[u8]> for BwtEncoded {
             return Ok(BwtEncoded::empty());
         }
         let mut shifts = get_shifts(data)?;
-        let original_index = sort_shifts(&mut shifts)?;
+        let original_index = sort_shifts(&mut shifts);
         let last_column: Vec<u8> = shifts
             .iter()
             .map(|shift| shift.last().copied().ok_or(anyhow!("Shift is empty")))
@@ -77,14 +77,16 @@ fn get_shifts(data: &[u8]) -> Result<Vec<Vec<u8>>> {
     Ok(ret)
 }
 
-fn sort_shifts(data_table: &mut Vec<Vec<u8>>) -> Result<usize> {
-    // TODO: handle zero lengths
-    let orig = data_table.get(0).ok_or(anyhow!("No data to sort"))?.clone();
+fn sort_shifts(data_table: &mut Vec<Vec<u8>>) -> usize {
+    if data_table.is_empty() || data_table.len() == 1 {
+        return 0;
+    }
+    let orig = &data_table[0].clone();
     data_table.sort_unstable();
     data_table
         .iter()
-        .position(|shift| shift.eq(&orig))
-        .ok_or(anyhow!("Original index not found"))
+        .position(|shift| shift.eq(orig))
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -110,18 +112,20 @@ mod tests {
         get_from_index(data, index).unwrap()
     }
 
-    #[test_case(b"abc" => vec![vec![b'a', b'b', b'c'], vec![b'b', b'c', b'a'], vec![b'c', b'a', b'b']]; "abc")]
-    #[test_case(b"ab" => vec![vec![b'a', b'b'], vec![b'b', b'a']]; "ab")]
+    #[test_case(b"abc" => vec![b"abc".to_vec(), b"bca".to_vec(), b"cab".to_vec()]; "three bytes")]
+    #[test_case(b"ab" => vec![b"ab".to_vec(), b"ba".to_vec()]; "two bytes")]
     #[test_case(b"a" => vec![vec![b'a']]; "one byte")]
     #[test_case(b"" => vec![Vec::<u8>::new()]; "empty")]
     fn test_get_shifts_success(data: &[u8]) -> Vec<Vec<u8>> {
         get_shifts(data).unwrap()
     }
 
+    #[test_case(vec![], vec![] => 0; "empty")]
+    #[test_case(vec![b"sadfiuasdiufasiudfnasdf".to_vec()], vec![b"sadfiuasdiufasiudfnasdf".to_vec()] => 0; "one element")]
     #[test_case(vec![vec![100, 1], vec![1, 100]], vec![vec![1, 100], vec![100, 1]] => 1; "switch entries")]
     #[test_case(vec![vec![1, 100], vec![100, 1]], vec![vec![1, 100], vec![100, 1]] => 0; "already sorted")]
     fn test_sort_shifts_success(mut input: Vec<Vec<u8>>, expected: Vec<Vec<u8>>) -> usize {
-        let idx = sort_shifts(&mut input).unwrap();
+        let idx = sort_shifts(&mut input);
         assert_eq!(input, expected);
         idx
     }
