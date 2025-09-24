@@ -179,6 +179,7 @@ mod tests {
     #[test_case(b"bczba"; "five bytes")]
     #[test_case(b"a"; "single byte")]
     #[test_case(b"aaa"; "three identical bytes")]
+    #[test_case("🚂⭐️🐝🤯".as_bytes(); "emojis")]
     #[test_case(b""; "empty")]
     fn test_roundtrip(data: &[u8]) {
         let encoded: BwtEncoded = data.try_into().unwrap();
