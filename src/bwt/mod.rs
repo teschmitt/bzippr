@@ -1,11 +1,45 @@
+use anyhow::{Result, anyhow};
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct BwtEncoded {
-    pub data: Vec<u8>,
-    pub original_index: usize,
+    data: Vec<u8>,
+    original_index: usize,
+}
+
+impl TryFrom<&[u8]> for BwtEncoded {
+    type Error = anyhow::Error;
+
+    fn try_from(data: &[u8]) -> Result<Self> {
+        if data.is_empty() {
+            return Ok(BwtEncoded::empty());
+        }
+        let mut shifts = get_shifts(data)?;
+        let original_index = sort_shifts(&mut shifts)?;
+        let last_column: Vec<u8> = shifts
+            .iter()
+            .map(|shift| shift.last().copied().ok_or(anyhow!("Shift is empty")))
+            .collect::<Result<Vec<u8>>>()?;
+        Ok(BwtEncoded::new(last_column, original_index))
+    }
 }
 
 impl BwtEncoded {
-    pub(crate) fn empty() -> Self {
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    pub fn new(data: Vec<u8>, original_index: usize) -> Self {
+        BwtEncoded {
+            data,
+            original_index,
+        }
+    }
+
+    pub fn empty() -> Self {
         BwtEncoded {
             data: Vec::new(),
             original_index: 0,
@@ -13,8 +47,44 @@ impl BwtEncoded {
     }
 }
 
-pub(crate) fn bwt_encode(data: &[u8]) -> BwtEncoded {
-    BwtEncoded::empty()
+fn get_from_index(data: &[u8], index: usize) -> Result<Vec<u8>> {
+    let data_length = data.len();
+    let mut result = Vec::with_capacity(data_length);
+    let mut current_index = index;
+    for _ in 0..data_length {
+        result.push(
+            *data
+                .get(current_index)
+                .ok_or(anyhow!("Index out of bounds: {}", current_index))?,
+        );
+        // In a real BWT implementation, we would use a more complex method to find the next index.
+        // Here, we just simulate it by moving to the next index in a circular manner.
+        current_index = (current_index + 1) % data_length;
+    }
+    // result.reverse();
+    Ok(result)
+}
+
+fn get_shifts(data: &[u8]) -> Result<Vec<Vec<u8>>> {
+    let data_length = data.len();
+    if data_length == 0 {
+        return Ok(vec![Vec::new()]);
+    }
+    let mut ret = Vec::with_capacity(data_length);
+    for idx in 0..data_length {
+        ret.push(get_from_index(data, idx)?);
+    }
+    Ok(ret)
+}
+
+fn sort_shifts(data_table: &mut Vec<Vec<u8>>) -> Result<usize> {
+    // TODO: handle zero lengths
+    let orig = data_table.get(0).ok_or(anyhow!("No data to sort"))?.clone();
+    data_table.sort_unstable();
+    data_table
+        .iter()
+        .position(|shift| shift.eq(&orig))
+        .ok_or(anyhow!("Original index not found"))
 }
 
 #[cfg(test)]
@@ -23,8 +93,36 @@ mod tests {
 
     use super::*;
 
-    #[test_case(b"BANANA" => BwtEncoded { data: vec![b'B', b'N', b'N', b'A', b'A', b'A'], original_index: 6 }; "banana")]
+    #[test_case(b"aba" => BwtEncoded { data: b"baa".to_vec(), original_index: 1 }; "aab")]
+    #[test_case(b"zbcba" => BwtEncoded { data: b"bczba".to_vec(), original_index: 4 }; "zbcba")]
+    #[test_case(b"a" => BwtEncoded { data: b"a".to_vec(), original_index: 0 }; "single byte")]
+    #[test_case(b"aaa" => BwtEncoded { data: b"aaa".to_vec(), original_index: 0 }; "three identical bytes")]
+    #[test_case(b"" => BwtEncoded { data: b"".to_vec(), original_index: 0 }; "empty")]
     fn test_bwt_encode(data: &[u8]) -> BwtEncoded {
-        bwt_encode(data)
+        data.try_into().unwrap()
+    }
+
+    #[test_case(b"ANABAN", 3 => b"BANANA".to_vec(); "banana")]
+    #[test_case(b"AB", 0 => b"AB".to_vec(); "index 0")]
+    #[test_case(b"AB", 1 => b"BA".to_vec(); "index -1")]
+    #[test_case(b"", 1 => b"".to_vec(); "empty")]
+    fn test_get_from_index_success(data: &[u8], index: usize) -> Vec<u8> {
+        get_from_index(data, index).unwrap()
+    }
+
+    #[test_case(b"abc" => vec![vec![b'a', b'b', b'c'], vec![b'b', b'c', b'a'], vec![b'c', b'a', b'b']]; "abc")]
+    #[test_case(b"ab" => vec![vec![b'a', b'b'], vec![b'b', b'a']]; "ab")]
+    #[test_case(b"a" => vec![vec![b'a']]; "one byte")]
+    #[test_case(b"" => vec![Vec::<u8>::new()]; "empty")]
+    fn test_get_shifts_success(data: &[u8]) -> Vec<Vec<u8>> {
+        get_shifts(data).unwrap()
+    }
+
+    #[test_case(vec![vec![100, 1], vec![1, 100]], vec![vec![1, 100], vec![100, 1]] => 1; "switch entries")]
+    #[test_case(vec![vec![1, 100], vec![100, 1]], vec![vec![1, 100], vec![100, 1]] => 0; "already sorted")]
+    fn test_sort_shifts_success(mut input: Vec<Vec<u8>>, expected: Vec<Vec<u8>>) -> usize {
+        let idx = sort_shifts(&mut input).unwrap();
+        assert_eq!(input, expected);
+        idx
     }
 }
