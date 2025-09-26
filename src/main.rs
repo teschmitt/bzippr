@@ -28,11 +28,11 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let data = std::fs::read(&args.file_path)?;
 
-    let rle_sequence: RleSequence = data[..].into();
+    let rle_sequence = RleSequence::encode(&data);
 
     println!("Length of RLE sequence: {}", rle_sequence.len());
 
-    let decompressed_data: Vec<u8> = rle_sequence.into();
+    let decompressed_data: Vec<u8> = rle_sequence.decode();
     assert_eq!(data, decompressed_data);
 
     println!(
