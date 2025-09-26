@@ -13,27 +13,25 @@ impl RleSequence {
 
 impl From<&[u8]> for RleSequence {
     fn from(data: &[u8]) -> Self {
-        // TODO: make this look nicer and more functional
-        let mut idx_data = 0;
-        let data_length = data.len();
-        let mut sequence: Vec<u8> = Vec::with_capacity(data_length * 13 / 10);
-        while idx_data < data_length {
-            let current_value = data[idx_data];
-            let mut look_ahead = 0;
-            while idx_data + look_ahead < data_length
-                && current_value == data[idx_data + look_ahead]
-            {
-                if look_ahead < 4 {
-                    sequence.push(current_value);
+        // worst case is x1.25 if data consists solely of sequences of four (e.g. b"aaaabbbbaaaabbbb")
+        let mut sequence = Vec::with_capacity(data.len() * 125 / 100);
+        let chunks = data.chunk_by(|a, b| a == b);
+
+        for chunk in chunks {
+            let value = chunk[0];
+            let mut remaining_length = chunk.len();
+
+            while remaining_length > 0 {
+                let run_length = remaining_length.min(255);
+
+                if run_length < 4 {
+                    sequence.extend(std::iter::repeat(value).take(run_length));
+                } else {
+                    sequence.extend(std::iter::repeat(value).take(4));
+                    sequence.push((run_length - 4) as u8);
                 }
-                if look_ahead == 255 {
-                    break;
-                }
-                look_ahead += 1;
-            }
-            idx_data += look_ahead;
-            if look_ahead >= 4 {
-                sequence.push((look_ahead - 4) as u8);
+
+                remaining_length -= run_length;
             }
         }
         RleSequence(sequence)
