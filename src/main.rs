@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let data = std::fs::read(&args.file_path)?;
 
-    let rle_sequence = RleSequence::from(&data[..]);
+    let rle_sequence: RleSequence = data[..].into();
 
     println!("Length of RLE sequence: {}", rle_sequence.len());
 
