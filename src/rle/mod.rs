@@ -6,6 +6,14 @@ impl RleSequence {
         self.0.len()
     }
 
+    pub fn sequence(&self) -> &[u8] {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn empty() -> Self {
         Self(vec![])
     }
@@ -70,6 +78,12 @@ impl From<&[u8]> for RleSequence {
     }
 }
 
+impl From<Vec<u8>> for RleSequence {
+    fn from(data: Vec<u8>) -> Self {
+        Self(data)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use test_case::test_case;
@@ -89,7 +103,7 @@ mod tests {
     #[test_case(b"abcdddd" => RleSequence(vec![b'a', b'b', b'c', b'd', b'd', b'd', b'd', 0]); "repeat at end")]
     #[test_case(b"abcddddd" => RleSequence(vec![b'a', b'b', b'c', b'd', b'd', b'd', b'd', 1]); "repeat plus one at end")]
     #[test_case(&[b'a'; 255] => RleSequence(vec![b'a', b'a', b'a', b'a', 251]); "long run")]
-    #[test_case(&[b'a'; 256] => RleSequence(vec![b'a', b'a', b'a', b'a', 251, b'a']); "loverlong run")]
+    #[test_case(&[b'a'; 256] => RleSequence(vec![b'a', b'a', b'a', b'a', 251, b'a']); "overlong run")]
     fn test_rle_encode(data: &[u8]) -> RleSequence {
         RleSequence::encode(data)
     }
@@ -107,7 +121,7 @@ mod tests {
     #[test_case(RleSequence(vec![b'a', b'b', b'c', b'd', b'd', b'd', b'd', 0]) => b"abcdddd".to_vec(); "repeat at end")]
     #[test_case(RleSequence(vec![b'a', b'b', b'c', b'd', b'd', b'd', b'd', 1]) => b"abcddddd".to_vec(); "repeat plus one at end")]
     #[test_case(RleSequence(vec![b'a', b'a', b'a', b'a', 251]) => [b'a'; 255].to_vec(); "long run")]
-    #[test_case(RleSequence(vec![b'a', b'a', b'a', b'a', 251, b'a']) => [b'a'; 256].to_vec(); "loverlong run")]
+    #[test_case(RleSequence(vec![b'a', b'a', b'a', b'a', 251, b'a']) => [b'a'; 256].to_vec(); "overlong run")]
     fn test_rle_decode(seq: RleSequence) -> Vec<u8> {
         seq.decode()
     }
@@ -125,7 +139,7 @@ mod tests {
     #[test_case(b"abcdddd"; "repeat at end")]
     #[test_case(b"abcddddd"; "repeat plus one at end")]
     #[test_case(&[b'a'; 255]; "long run")]
-    #[test_case(&[b'a'; 256]; "loverlong run")]
+    #[test_case(&[b'a'; 256]; "overlong run")]
     fn test_roundtrip(data: &[u8]) {
         assert_eq!(data, RleSequence::encode(data).decode());
     }

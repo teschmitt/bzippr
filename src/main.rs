@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 
+use bwt::BwtEncoded;
 use rle::RleSequence;
 
 mod bwt;
@@ -28,11 +29,15 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let data = std::fs::read(&args.file_path)?;
 
-    let rle_sequence = RleSequence::encode(&data);
+    let rle_sequence = &RleSequence::encode(&data);
 
     println!("Length of RLE sequence: {}", rle_sequence.len());
 
-    let decompressed_data: Vec<u8> = rle_sequence.decode();
+    let bwt: BwtEncoded = rle_sequence.try_into().unwrap();
+
+    println!("Length of BWT transform: {}", bwt.len());
+
+    let decompressed_data: Vec<u8> = TryInto::<RleSequence>::try_into(bwt).unwrap().decode();
     assert_eq!(data, decompressed_data);
 
     println!(
