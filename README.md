@@ -9,8 +9,8 @@ bzippr is a command-line tool that implements the `bzip2` compression algorithm 
 ## Features
 
 - ✅ Run-Length Encoding (RLE) compression and decompression
-- ✅ Move-to-Front (MTF) transformation
 - ✅ Burrows-Wheeler Transform (BWT) implementation
+- ⏳ Move-to-Front (MTF) transformation (with second RLE pass)
 - ⏳ Huffman Coding
 - ⏳ Full bzip2 format support
 - ⏳ Command-line interface for file compression
