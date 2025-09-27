@@ -7,8 +7,7 @@ use clap::Parser;
 use bwt::BwtEncoded;
 use rle::RleSequence;
 
-mod bwt;
-mod rle;
+use bzippr::{bwt, rle};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -33,9 +32,20 @@ fn main() -> Result<()> {
 
     println!("Length of RLE sequence: {}", rle_sequence.len());
 
+    println!("RLE: {:?}", rle_sequence);
+
     let bwt: BwtEncoded = rle_sequence.try_into().unwrap();
 
     println!("Length of BWT transform: {}", bwt.len());
+
+    println!("BWT: {:?}", bwt);
+
+    let compressed_bwt = RleSequence::encode(&bwt.data());
+    println!(
+        "RLE of BWT: {:?} with length: {}",
+        compressed_bwt,
+        compressed_bwt.len()
+    );
 
     let decompressed_data: Vec<u8> = TryInto::<RleSequence>::try_into(bwt).unwrap().decode();
     assert_eq!(data, decompressed_data);

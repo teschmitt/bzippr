@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct RleSequence(Vec<u8>);
+pub struct RleSequence(Vec<u8>);
 
 impl RleSequence {
     pub fn len(&self) -> usize {

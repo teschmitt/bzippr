@@ -9,6 +9,7 @@ pub struct BwtEncoded {
 }
 
 impl TryFrom<&RleSequence> for BwtEncoded {
+    // TODO: use TryFrom and TryInto for simply converting bytes into the BwtEncoded struct
     type Error = anyhow::Error;
 
     fn try_from(data: &RleSequence) -> Result<Self> {
@@ -26,6 +27,7 @@ impl TryFrom<&RleSequence> for BwtEncoded {
 }
 
 impl TryInto<RleSequence> for BwtEncoded {
+    // TODO: use TryFrom and TryInto for simply converting bytes into the BwtEncoded struct
     type Error = anyhow::Error;
 
     fn try_into(self) -> Result<RleSequence> {
@@ -78,6 +80,10 @@ impl BwtEncoded {
             data: Vec::new(),
             original_index: 0,
         }
+    }
+
+    pub fn data(&self) -> Vec<u8> {
+        self.data.clone()
     }
 
     fn try_get(&self, index: usize) -> Result<u8> {
@@ -178,6 +184,7 @@ mod tests {
         assert_eq!(decoded, expected);
     }
 
+    // TODO: read in test data from a file instead of polluting tests with this data
     const LARGE_DATA: &str = "\
 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890\
 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890\
