@@ -53,6 +53,14 @@ mod tests {
     use super::*;
     use test_case::test_case;
 
+    #[test_case(b"" => MtfTransform::empty(); "empty")]
+    #[test_case(b"a" => MtfTransform {symbols: vec![0], stack: vec![97]}; "single byte")]
+    #[test_case(b"abcdefg" => MtfTransform { symbols: vec![0, 1, 2, 3, 4, 5, 6], stack: vec![97, 98, 99, 100, 101, 102, 103] }; "all unique bytes")]
+    #[test_case(b"aaaaabbbbbccccc" => MtfTransform { symbols: vec![0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 0], stack: vec![97, 98, 99] }; "repeated blocks")]
+    #[test_case(b"aaaaa" => MtfTransform {symbols: vec![0, 0, 0, 0, 0], stack: vec![ 97 ]}; "repeat same byte")]
+    #[test_case(b"ababab" => MtfTransform {symbols: vec![0, 1, 1, 1, 1, 1], stack: vec![ 97, 98 ]}; "alternate two bytes")]
+    #[test_case(b"abccbaabccba" => MtfTransform {symbols: vec![0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2], stack: vec![ 97, 98, 99 ]}; "back and forth")]
+    #[test_case(b"abacaba" => MtfTransform { symbols: vec![0, 1, 1, 2, 1, 2, 1], stack: vec![97, 98, 99] }; "overlapping patterns")]
     #[test_case(b"bbyaeeeeeeafeeeybzzzzzzzzzyz" => MtfTransform { symbols: vec![1, 0, 4, 2, 3, 0, 0, 0, 0, 0, 1, 4, 2, 0, 0, 3, 4, 5, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1], stack: vec![97, 98, 101, 102, 121, 122] }; "bbyaeeeeeeafeeeybzzzzzzzzzyz")]
     fn test_mtf_encode(data: &[u8]) -> MtfTransform {
         MtfTransform::encode(data)
