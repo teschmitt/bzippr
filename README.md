@@ -1,17 +1,29 @@
 # bzippr
 
-A Rust implementation of `bzip2` compression algorithm.
+A Rust implementation of the `bzip2` compression algorithm.
 
 ## Overview
 
-bzippr is a command-line tool that implements the `bzip2` compression algorithm from scratch. Currently supports run-length encoding (RLE) with Burrows-Wheeler Transform (BWT) implementation in progress.
+bzippr is a command-line tool that implements the `bzip2` compression algorithm from scratch. The project aims to provide a comprehensive Rust implementation of all stages in the bzip2 compression pipeline.
 
 ## Features
 
-- Run-Length Encoding (RLE) compression and decompression
-- Burrows-Wheeler Transform implementation (in development)
-- Command-line interface for file compression
-- Built with Rust for memory safety and performance
+- ✅ Run-Length Encoding (RLE) compression and decompression
+- ✅ Move-to-Front (MTF) transformation
+- ✅ Burrows-Wheeler Transform (BWT) implementation
+- ⏳ Huffman Coding
+- ⏳ Full bzip2 format support
+- ⏳ Command-line interface for file compression
+
+## Implementation Status
+
+The project has successfully implemented the following compression stages:
+
+1. **Run-Length Encoding (RLE)**: A lossless data compression technique that encodes consecutive repeated data elements.
+2. **Move-to-Front Transform (MTF)**: An algorithm that reorders data based on recency of occurrence, improving compression for certain types of data.
+3. **Burrows-Wheeler Transform (BWT)**: A reversible transformation that rearranges input data to improve compressibility.
+
+These components are fully implemented with comprehensive test coverage, including edge cases and larger datasets.
 
 ## Installation
 
@@ -21,30 +33,21 @@ cargo build --release
 
 ## Usage
 
-```bash
-bzippr --file-path <input_file> [--output-path <output_file>]
+The command-line interface is still in development. The core compression algorithms can be used as a library.
+
+```rust
+use bzippr::{bwt, mtf, rle};
+
+// Example usage will be provided once CLI is complete
 ```
 
-### Options
+## Future Work
 
-- `-f, --file-path <FILE>`: Path of input file to compress (required)
-- `-o, --output-path <FILE>`: Path of compressed output file (optional)
-
-### Example
-
-```bash
-# Compress a file
-bzippr -f example.txt -o example.bz2
-```
-
-## Development Status
-
-This is a work-in-progress implementation of the `bzip2` algorithm:
-
-- ✅ Run-Length Encoding
-- 🚧 Burrows-Wheeler Transform
-- ⏳ Huffman Coding
-- ⏳ Full bzip2 format support
+- Implement Huffman Coding stage
+- Integrate all compression stages into the full bzip2 pipeline
+- Develop a user-friendly command-line interface
+- Add benchmarking against the original bzip2 implementation
+- Support for additional bzip2 features (block sizes, compression levels)
 
 ## License
 
