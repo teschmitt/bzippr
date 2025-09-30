@@ -7,7 +7,7 @@ use clap::Parser;
 use bwt::BwtEncoded;
 use rle::RleSequence;
 
-use bzippr::{bwt, rle};
+use bzippr::{bwt, mtf::MtfTransform, rle};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -28,34 +28,27 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let data = std::fs::read(&args.file_path)?;
 
-    let rle_sequence = &RleSequence::encode(&data);
+    let rle_enc = &RleSequence::encode(&data);
+    println!("Length of RLE sequence: {}", rle_enc.len());
 
-    println!("Length of RLE sequence: {}", rle_sequence.len());
+    let bwt_enc = BwtEncoded::encode(rle_enc);
+    println!("Length of BWT transform: {}", bwt_enc.len());
 
-    println!("RLE: {:?}", rle_sequence);
+    let mtf_enc: MtfTransform = MtfTransform::encode(&bwt_enc.data());
+    println!("Length of MTF transform: {}", mtf_enc.len());
 
-    let bwt: BwtEncoded = rle_sequence.try_into().unwrap();
-
-    println!("Length of BWT transform: {}", bwt.len());
-
-    println!("BWT: {:?}", bwt);
-
-    let compressed_bwt = RleSequence::encode(&bwt.data());
     println!(
-        "RLE of BWT: {:?} with length: {}",
-        compressed_bwt,
-        compressed_bwt.len()
+        "Compression ratio: {:.2}%",
+        100.0 - (100 * mtf_enc.len()) as f64 / data.len() as f64
     );
 
-    let decompressed_data: Vec<u8> = TryInto::<RleSequence>::try_into(bwt).unwrap().decode();
+    let decompressed_data = BwtEncoded::new(mtf_enc.decode(), bwt_enc.original_index())
+        .decode()
+        .decode();
+
     assert_eq!(data, decompressed_data);
 
-    println!(
-        "Decompresssed data: {}",
-        decompressed_data
-            .iter()
-            .map(|b| *b as char)
-            .collect::<String>()
-    );
+    println!("Success!");
+
     Ok(())
 }
