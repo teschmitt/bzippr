@@ -8,57 +8,6 @@ pub struct BwtEncoded {
     original_index: usize,
 }
 
-impl TryFrom<&RleSequence> for BwtEncoded {
-    // TODO: use TryFrom and TryInto for simply converting bytes into the BwtEncoded struct
-    type Error = anyhow::Error;
-
-    fn try_from(data: &RleSequence) -> Result<Self> {
-        if data.is_empty() {
-            return Ok(BwtEncoded::empty());
-        }
-        let mut shifts = get_shifts(data.sequence())?;
-        let original_index = sort_table(&mut shifts);
-        let last_column: Vec<u8> = shifts
-            .iter()
-            .map(|shift| shift.last().copied().ok_or(anyhow!("Shift is empty")))
-            .collect::<Result<Vec<u8>>>()?;
-        Ok(BwtEncoded::new(last_column, original_index))
-    }
-}
-
-impl TryInto<RleSequence> for BwtEncoded {
-    // TODO: use TryFrom and TryInto for simply converting bytes into the BwtEncoded struct
-    type Error = anyhow::Error;
-
-    fn try_into(self) -> Result<RleSequence> {
-        let data_length = self.len();
-        if data_length == 0 {
-            return Ok(RleSequence::empty());
-        }
-        let mut data_table: Vec<Vec<u8>> = Vec::with_capacity(data_length);
-
-        for _ in 0..data_length {
-            data_table.push(vec![0; data_length]);
-        }
-
-        for col in (0..self.len()).rev() {
-            for row in 0..self.len() {
-                data_table[row][col] = self.try_get(row)?;
-            }
-            sort_table(&mut data_table);
-        }
-
-        Ok(data_table
-            .get(self.original_index)
-            .ok_or(anyhow!(
-                "Original index out of bounds: {}",
-                self.original_index
-            ))?
-            .clone()
-            .into())
-    }
-}
-
 impl BwtEncoded {
     pub fn len(&self) -> usize {
         self.data.len()
@@ -86,11 +35,50 @@ impl BwtEncoded {
         self.data.clone()
     }
 
+    pub fn original_index(&self) -> usize {
+        self.original_index
+    }
+
     fn try_get(&self, index: usize) -> Result<u8> {
         self.data
             .get(index)
             .copied()
             .ok_or(anyhow!("Index out of bounds: {}", index))
+    }
+
+    pub fn encode(data: &RleSequence) -> Self {
+        if data.is_empty() {
+            return Self::empty();
+        }
+        let mut shifts = get_shifts(data.sequence()).unwrap();
+        let original_index = sort_table(&mut shifts);
+        let last_column: Vec<u8> = shifts
+            .iter()
+            .map(|shift| shift.last().copied().ok_or(anyhow!("Shift is empty")))
+            .collect::<Result<Vec<u8>>>()
+            .unwrap(); // TODO: error handling
+        Self::new(last_column, original_index)
+    }
+
+    pub fn decode(&self) -> RleSequence {
+        let data_length = self.len();
+        if data_length == 0 {
+            return RleSequence::empty();
+        }
+        let mut data_table: Vec<Vec<u8>> = Vec::with_capacity(data_length);
+
+        for _ in 0..data_length {
+            data_table.push(vec![0; data_length]);
+        }
+
+        for col in (0..self.len()).rev() {
+            for row in 0..self.len() {
+                data_table[row][col] = self.try_get(row).unwrap(); // TODO: Error handling
+            }
+            sort_table(&mut data_table);
+        }
+
+        data_table.get(self.original_index).unwrap().clone().into() // TODO: Error handling
     }
 }
 
@@ -145,7 +133,7 @@ mod tests {
     #[test_case(&RleSequence::from(b"aaa".to_vec()) => BwtEncoded { data: b"aaa".to_vec(), original_index: 0 }; "three identical bytes")]
     #[test_case(&RleSequence::from(b"".to_vec()) => BwtEncoded { data: b"".to_vec(), original_index: 0 }; "empty")]
     fn test_bwt_encode(data: &RleSequence) -> BwtEncoded {
-        data.try_into().unwrap()
+        BwtEncoded::encode(data)
     }
 
     #[test_case(b"ANABAN", 3 => b"BANANA".to_vec(); "banana")]
@@ -180,7 +168,7 @@ mod tests {
     #[test_case(BwtEncoded { data: b"aaa".to_vec(), original_index: 0 }, b"aaa".to_vec().into(); "three identical bytes")]
     #[test_case(BwtEncoded { data: b"".to_vec(), original_index: 0 }, b"".to_vec().into(); "empty")]
     fn test_bwt_decode(encoded: BwtEncoded, expected: RleSequence) {
-        let decoded: RleSequence = encoded.try_into().unwrap();
+        let decoded: RleSequence = encoded.decode();
         assert_eq!(decoded, expected);
     }
 
@@ -237,8 +225,8 @@ mod tests {
     #[test_case(&RleSequence::from(LARGE_DATA.as_bytes().to_vec()); "four kb")]
     #[test_case(&RleSequence::from(b"".to_vec()); "empty")]
     fn test_roundtrip(data: &RleSequence) {
-        let encoded: BwtEncoded = data.try_into().unwrap();
-        let decoded: RleSequence = encoded.try_into().unwrap();
+        let encoded = BwtEncoded::encode(data);
+        let decoded: RleSequence = encoded.decode();
         assert_eq!(&decoded, data);
     }
 }
