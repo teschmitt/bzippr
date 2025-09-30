@@ -10,7 +10,7 @@ bzippr is a command-line tool that implements the `bzip2` compression algorithm 
 
 - ✅ Run-Length Encoding (RLE) compression and decompression
 - ✅ Burrows-Wheeler Transform (BWT) implementation
-- ⏳ Move-to-Front (MTF) transformation (with second RLE pass)
+- ✅ Move-to-Front (MTF) transformation (with second RLE pass)
 - ⏳ Huffman Coding
 - ⏳ Full bzip2 format support
 - ⏳ Command-line interface for file compression
@@ -20,10 +20,8 @@ bzippr is a command-line tool that implements the `bzip2` compression algorithm 
 The project has successfully implemented the following compression stages:
 
 1. **Run-Length Encoding (RLE)**: A lossless data compression technique that encodes consecutive repeated data elements.
-2. **Move-to-Front Transform (MTF)**: An algorithm that reorders data based on recency of occurrence, improving compression for certain types of data.
-3. **Burrows-Wheeler Transform (BWT)**: A reversible transformation that rearranges input data to improve compressibility.
-
-These components are fully implemented with comprehensive test coverage, including edge cases and larger datasets.
+2. **Burrows-Wheeler Transform (BWT)**: A reversible transformation that rearranges input data to improve compressibility.
+3. **Move-to-Front Transform (MTF)** (includes second RLE pass): An algorithm that reorders data based on recency of occurrence, improving compression for certain types of data.
 
 ## Installation
 
