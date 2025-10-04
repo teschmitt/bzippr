@@ -1,12 +1,15 @@
 use std::collections::BTreeSet;
 
-const RUNA: usize = 1337;
-const RUNB: usize = 1338;
+#[derive(Debug, PartialEq, Eq)]
+pub enum MtfIndex {
+    RunA,
+    RunB,
+    Val(u8),
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MtfTransform {
-    // TODO: these aren't symbols, they're indices ... maybe make that clear in the naming
-    symbols: Vec<usize>,
+    indices: Vec<MtfIndex>,
     stack: Vec<u8>,
 }
 
@@ -17,6 +20,7 @@ impl MtfTransform {
     /// https://github.com/dsnet/compress/blob/39efe44ab707ffd2c1ef32cc7dbebfe584718686/doc/bzip2-format.pdf
     /// So that's what we're doing here:
     pub fn encode(data: &[u8]) -> Self {
+        // TODO: think long and hard if the input to the decode shouldn't rather be a BwtEncoded
         if data.is_empty() {
             return Self::empty();
         }
@@ -26,12 +30,12 @@ impl MtfTransform {
 
         // MTF Transform
         let mut working_stack = stack.clone();
-        let mut mtf_symbols = Vec::with_capacity(data.len());
+        let mut mtf_indices = Vec::with_capacity(data.len());
         let mut current_byte = None;
 
         for &byte in data {
             if current_byte == Some(byte) {
-                mtf_symbols.push(0);
+                mtf_indices.push(0);
                 continue;
             }
 
@@ -47,21 +51,21 @@ impl MtfTransform {
                 working_stack[0] = val;
             }
 
-            mtf_symbols.push(position);
+            mtf_indices.push(position as u8);
             current_byte = Some(byte);
         }
 
         // RLE2 encoding
-        let mut symbols: Vec<usize> = Vec::with_capacity(mtf_symbols.len());
-        for chunk in mtf_symbols.chunk_by(|&a, &b| (a == 0 && b == 0) || (a != 0 && b != 0)) {
+        let mut indices: Vec<MtfIndex> = Vec::with_capacity(mtf_indices.len());
+        for chunk in mtf_indices.chunk_by(|&a, &b| (a == 0 && b == 0) || (a != 0 && b != 0)) {
             if chunk[0] == 0 {
-                emit_run(chunk.len(), &mut symbols);
+                emit_run(chunk.len(), &mut indices);
             } else {
-                symbols.extend(chunk);
+                indices.extend(chunk.iter().map(|&i| MtfIndex::Val(i)));
             }
         }
 
-        Self { symbols, stack }
+        Self { indices, stack }
     }
 
     pub fn decode(&self) -> Vec<u8> {
@@ -70,28 +74,28 @@ impl MtfTransform {
         }
 
         // RLE2 decoding pass
-        let mut mtf_indices = Vec::with_capacity(self.symbols.len() * 2);
+        let mut mtf_indices = Vec::with_capacity(self.indices.len() * 2); // TODO: Find a better way to estimate required capacity
         let mut run_length = 0;
         let mut power = 1;
 
-        for &idx in &self.symbols {
+        for idx in &self.indices {
             match idx {
-                RUNA => {
+                MtfIndex::RunA => {
                     run_length += power;
-                    // TODO: test potential overflow here
+                    // TODO: test potential overflow of power here
                     power <<= 1;
                 }
-                RUNB => {
+                MtfIndex::RunB => {
                     run_length += power * 2;
                     power <<= 1;
                 }
-                found_index => {
+                MtfIndex::Val(found_index) => {
                     if run_length > 0 {
                         mtf_indices.extend(std::iter::repeat(0).take(run_length));
                         run_length = 0;
                         power = 1;
                     }
-                    mtf_indices.push(found_index);
+                    mtf_indices.push(*found_index);
                 }
             }
         }
@@ -104,7 +108,7 @@ impl MtfTransform {
         let mut result = Vec::with_capacity(mtf_indices.len());
         let mut working_stack = self.stack.clone();
 
-        for &idx in &mtf_indices {
+        for idx in mtf_indices.iter().map(|&i| i as usize) {
             let symbol = working_stack.get(idx).expect("Invalid index in MTF decode");
             result.push(*symbol);
 
@@ -120,28 +124,36 @@ impl MtfTransform {
 
     pub fn empty() -> Self {
         Self {
-            symbols: vec![],
+            indices: vec![],
             stack: vec![],
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.symbols.len() == 0
+        self.indices.len() == 0
     }
 
     pub fn len(&self) -> usize {
-        self.symbols.len()
+        self.indices.len()
+    }
+
+    pub fn num_stack(&self) -> usize {
+        self.stack.len()
+    }
+
+    pub fn indices(&self) -> &Vec<MtfIndex> {
+        &self.indices
     }
 }
 
 #[inline(always)]
-fn emit_run(mut run_length: usize, out: &mut Vec<usize>) {
+fn emit_run(mut run_length: usize, out: &mut Vec<MtfIndex>) {
     while run_length > 0 {
         if run_length & 1 == 1 {
-            out.push(RUNA);
+            out.push(MtfIndex::RunA);
             run_length = (run_length - 1) >> 1;
         } else {
-            out.push(RUNB);
+            out.push(MtfIndex::RunB);
             run_length = (run_length - 2) >> 1;
         }
     }
@@ -152,39 +164,66 @@ mod tests {
     use super::*;
     use test_case::test_case;
 
-    #[test_case(b"" => MtfTransform::empty(); "empty")]
-    #[test_case(&vec![0] => MtfTransform { symbols: vec![RUNA], stack: vec![0] }; "zero")]
-    #[test_case(&vec![0, 0, 0, 0, 0, 0] => MtfTransform { symbols: vec![RUNB, RUNB], stack: vec![0] }; "zeroes")]
-    #[test_case(b"a" => MtfTransform {symbols: vec![RUNA], stack: vec![97]}; "single byte")]
-    #[test_case(b"abcdefg" => MtfTransform { symbols: vec![RUNA, 1, 2, 3, 4, 5, 6], stack: vec![97, 98, 99, 100, 101, 102, 103] }; "all unique bytes")]
-    #[test_case(b"gab" => MtfTransform { symbols: vec![2, 1, 2], stack: vec![97, 98, 103] }; "no runs")]
-    #[test_case(b"aaaaabbbbbccccc" => MtfTransform { symbols: vec![RUNA, RUNB, 1, RUNB, RUNA, 2, RUNB, RUNA], stack: vec![97, 98, 99] }; "repeated blocks")]
-    #[test_case(b"aaaaa" => MtfTransform {symbols: vec![RUNA, RUNB], stack: vec![ 97 ]}; "repeat same byte")]
-    #[test_case(b"ababab" => MtfTransform {symbols: vec![RUNA, 1, 1, 1, 1, 1], stack: vec![ 97, 98 ]}; "alternate two bytes")]
-    #[test_case(b"abccbaabccba" => MtfTransform {symbols: vec![RUNA, 1, 2, RUNA, 1, 2, RUNA, 1, 2, RUNA, 1, 2], stack: vec![ 97, 98, 99 ]}; "back and forth")]
-    #[test_case(b"abacaba" => MtfTransform { symbols: vec![RUNA, 1, 1, 2, 1, 2, 1], stack: vec![97, 98, 99] }; "overlapping patterns")]
-    #[test_case(b"bbyaeeeeeeafeeeybzzzzzzzzzyz" => MtfTransform { symbols: vec![1, RUNA, 4, 2, 3, RUNA, RUNB, 1, 4, 2, RUNB, 3, 4, 5, RUNB, RUNA, RUNA, 2, 1], stack: vec![97, 98, 101, 102, 121, 122] }; "bbyaeeeeeeafeeeybzzzzzzzzzyz")]
-    #[test_case(b"abccc" => MtfTransform { symbols: vec![RUNA, 1, 2, RUNB], stack: vec![97, 98, 99] }; "one runb at end")]
-    #[test_case(b"abcccc" => MtfTransform { symbols: vec![RUNA, 1, 2, RUNA, RUNA], stack: vec![97, 98, 99] }; "runas at end")]
-    fn test_mtf_encode(data: &[u8]) -> MtfTransform {
-        MtfTransform::encode(data)
+    mod t {
+        pub const RUNA: usize = 1337;
+        pub const RUNB: usize = 1338;
     }
 
-    #[test_case(MtfTransform::empty() => Vec::<u8>::new(); "empty")]
-    #[test_case(MtfTransform { symbols: vec![RUNA], stack: vec![0] } => vec![0u8]; "zero")]
-    #[test_case(MtfTransform { symbols: vec![RUNB, RUNB], stack: vec![0] } => vec![0, 0, 0, 0, 0, 0]; "zeroes")]
-    #[test_case(MtfTransform {symbols: vec![RUNA], stack: vec![97]} => b"a".to_vec(); "single byte")]
-    #[test_case(MtfTransform { symbols: vec![RUNA, 1, 2, 3, 4, 5, 6], stack: vec![97, 98, 99, 100, 101, 102, 103] } => b"abcdefg".to_vec(); "all unique bytes")]
-    #[test_case(MtfTransform { symbols: vec![2, 1, 2], stack: vec![97, 98, 103] } => b"gab".to_vec(); "no runs")]
-    #[test_case(MtfTransform { symbols: vec![RUNA, RUNB, 1, RUNB, RUNA, 2, RUNB, RUNA], stack: vec![97, 98, 99] } => b"aaaaabbbbbccccc".to_vec(); "repeated blocks")]
-    #[test_case(MtfTransform {symbols: vec![RUNA, RUNB], stack: vec![ 97 ]} => b"aaaaa".to_vec(); "repeat same byte")]
-    #[test_case(MtfTransform {symbols: vec![RUNA, 1, 1, 1, 1, 1], stack: vec![ 97, 98 ]} => b"ababab".to_vec(); "alternate two bytes")]
-    #[test_case(MtfTransform {symbols: vec![RUNA, 1, 2, RUNA, 1, 2, RUNA, 1, 2, RUNA, 1, 2], stack: vec![ 97, 98, 99 ]} => b"abccbaabccba".to_vec(); "back and forth")]
-    #[test_case(MtfTransform { symbols: vec![RUNA, 1, 1, 2, 1, 2, 1], stack: vec![97, 98, 99] } => b"abacaba".to_vec(); "overlapping patterns")]
-    #[test_case(MtfTransform { symbols: vec![1, RUNA, 4, 2, 3, RUNA, RUNB, 1, 4, 2, RUNB, 3, 4, 5, RUNB, RUNA, RUNA, 2, 1], stack: vec![97, 98, 101, 102, 121, 122] } => b"bbyaeeeeeeafeeeybzzzzzzzzzyz".to_vec(); "bbyaeeeeeeafeeeybzzzzzzzzzyz")]
-    #[test_case(MtfTransform { symbols: vec![RUNA, 1, 2, RUNB], stack: vec![97, 98, 99] } => b"abccc".to_vec(); "one runb at end")]
-    #[test_case(MtfTransform { symbols: vec![RUNA, 1, 2, RUNA, RUNA], stack: vec![97, 98, 99] } => b"abcccc".to_vec(); "runas at end")]
-    fn test_mtf_decode(mtf: MtfTransform) -> Vec<u8> {
+    #[test_case(b"" => (vec![], vec![]); "empty")]
+    #[test_case(&vec![0] => (vec![t::RUNA], vec![0]); "zero")]
+    #[test_case(&vec![0, 0, 0, 0, 0, 0] => (vec![t::RUNB, t::RUNB], vec![0]); "zeroes")]
+    #[test_case(b"a" => (vec![t::RUNA], vec![97]); "single byte")]
+    #[test_case(b"abcdefg" => (vec![t::RUNA, 1, 2, 3, 4, 5, 6], vec![97, 98, 99, 100, 101, 102, 103]); "all unique bytes")]
+    #[test_case(b"gab" => (vec![2, 1, 2], vec![97, 98, 103]); "no runs")]
+    #[test_case(b"aaaaabbbbbccccc" => (vec![t::RUNA, t::RUNB, 1, t::RUNB, t::RUNA, 2, t::RUNB, t::RUNA], vec![97, 98, 99]); "repeated blocks")]
+    #[test_case(b"aaaaa" => (vec![t::RUNA, t::RUNB], vec![ 97 ]); "repeat same byte")]
+    #[test_case(b"ababab" => (vec![t::RUNA, 1, 1, 1, 1, 1], vec![ 97, 98 ]); "alternate two bytes")]
+    #[test_case(b"abccbaabccba" => (vec![t::RUNA, 1, 2, t::RUNA, 1, 2, t::RUNA, 1, 2, t::RUNA, 1, 2], vec![ 97, 98, 99 ]); "back and forth")]
+    #[test_case(b"abacaba" => (vec![t::RUNA, 1, 1, 2, 1, 2, 1], vec![97, 98, 99]); "overlapping patterns")]
+    #[test_case(b"bbyaeeeeeeafeeeybzzzzzzzzzyz" => (vec![1, t::RUNA, 4, 2, 3, t::RUNA, t::RUNB, 1, 4, 2, t::RUNB, 3, 4, 5, t::RUNB, t::RUNA, t::RUNA, 2, 1], vec![97, 98, 101, 102, 121, 122]); "bbyaeeeeeeafeeeybzzzzzzzzzyz")]
+    #[test_case(b"abccc" => (vec![t::RUNA, 1, 2, t::RUNB], vec![97, 98, 99]); "one runb at end")]
+    #[test_case(b"abcccc" => (vec![t::RUNA, 1, 2, t::RUNA, t::RUNA], vec![97, 98, 99]); "runas at end")]
+    fn test_mtf_encode(data: &[u8]) -> (Vec<usize>, Vec<u8>) {
+        let mtf = MtfTransform::encode(data);
+        (
+            mtf.indices
+                .iter()
+                .map(|i| match i {
+                    MtfIndex::RunA => t::RUNA,
+                    MtfIndex::RunB => t::RUNB,
+                    MtfIndex::Val(v) => *v as usize,
+                })
+                .collect(),
+            mtf.stack,
+        )
+    }
+
+    #[test_case(Vec::<usize>::new(), Vec::<u8>::new() => Vec::<u8>::new(); "empty")]
+    #[test_case(vec![t::RUNA], vec![0] => vec![0]; "zero")]
+    #[test_case(vec![t::RUNB, t::RUNB], vec![0] => vec![0, 0, 0, 0, 0, 0]; "zeroes")]
+    #[test_case(vec![t::RUNA], vec![97] => b"a".to_vec(); "single byte")]
+    #[test_case(vec![t::RUNA, 1, 2, 3, 4, 5, 6], vec![97, 98, 99, 100, 101, 102, 103] => b"abcdefg".to_vec(); "all unique bytes")]
+    #[test_case(vec![2, 1, 2], vec![97, 98, 103] => b"gab".to_vec(); "no runs")]
+    #[test_case(vec![t::RUNA, t::RUNB, 1, t::RUNB, t::RUNA, 2, t::RUNB, t::RUNA], vec![97, 98, 99] => b"aaaaabbbbbccccc".to_vec(); "repeated blocks")]
+    #[test_case(vec![t::RUNA, t::RUNB], vec![ 97 ] => b"aaaaa".to_vec(); "repeat same byte")]
+    #[test_case(vec![t::RUNA, 1, 1, 1, 1, 1], vec![ 97, 98 ] => b"ababab".to_vec(); "alternate two bytes")]
+    #[test_case(vec![t::RUNA, 1, 2, t::RUNA, 1, 2, t::RUNA, 1, 2, t::RUNA, 1, 2], vec![ 97, 98, 99 ] => b"abccbaabccba".to_vec(); "back and forth")]
+    #[test_case(vec![t::RUNA, 1, 1, 2, 1, 2, 1], vec![97, 98, 99] => b"abacaba".to_vec(); "overlapping patterns")]
+    #[test_case(vec![1, t::RUNA, 4, 2, 3, t::RUNA, t::RUNB, 1, 4, 2, t::RUNB, 3, 4, 5, t::RUNB, t::RUNA, t::RUNA, 2, 1], vec![97, 98, 101, 102, 121, 122] => b"bbyaeeeeeeafeeeybzzzzzzzzzyz".to_vec(); "bbyaeeeeeeafeeeybzzzzzzzzzyz")]
+    #[test_case(vec![t::RUNA, 1, 2, t::RUNB], vec![97, 98, 99] => b"abccc".to_vec(); "one runb at end")]
+    #[test_case(vec![t::RUNA, 1, 2, t::RUNA, t::RUNA], vec![97, 98, 99] => b"abcccc".to_vec(); "runas at end")]
+    fn test_mtf_decode(indices: Vec<usize>, stack: Vec<u8>) -> Vec<u8> {
+        let mtf = MtfTransform {
+            indices: indices
+                .iter()
+                .map(|&i| match i {
+                    t::RUNA => MtfIndex::RunA,
+                    t::RUNB => MtfIndex::RunB,
+                    v => MtfIndex::Val(v as u8),
+                })
+                .collect(),
+            stack,
+        };
         mtf.decode()
     }
 
