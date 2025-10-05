@@ -9,8 +9,8 @@ pub enum MtfIndex {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MtfTransform {
-    indices: Vec<MtfIndex>,
-    stack: Vec<u8>,
+    pub(crate) indices: Vec<MtfIndex>,
+    pub(crate) stack: Vec<u8>,
 }
 
 impl MtfTransform {
@@ -160,14 +160,15 @@ fn emit_run(mut run_length: usize, out: &mut Vec<MtfIndex>) {
 }
 
 #[cfg(test)]
+pub(crate) mod t {
+    pub const RUNA: usize = 1337;
+    pub const RUNB: usize = 1338;
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use test_case::test_case;
-
-    mod t {
-        pub const RUNA: usize = 1337;
-        pub const RUNB: usize = 1338;
-    }
 
     #[test_case(b"" => (vec![], vec![]); "empty")]
     #[test_case(&vec![0] => (vec![t::RUNA], vec![0]); "zero")]
