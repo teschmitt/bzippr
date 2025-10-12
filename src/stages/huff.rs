@@ -1,4 +1,5 @@
 use crate::mtf::{MtfIndex, MtfTransform};
+use bitstream_io::{BigEndian, BitWrite, BitWriter};
 use std::collections::HashMap;
 
 type SymbolIndex = usize;
@@ -102,8 +103,14 @@ impl Node {
     }
 }
 
-type SymbolCode = Vec<bool>;
-type CodeTable = HashMap<Option<SymbolIndex>, SymbolCode>;
+#[derive(Debug, Clone)]
+struct SymbolCode {
+    code: u32, // codes can be up to 20 bits long
+    width: u8,
+}
+type CodeTable = HashMap<SymbolIndex, SymbolCode>;
+
+struct HuffmanEncodedResult {}
 
 struct HuffmanEncoder {
     root: Option<Node>,
@@ -119,12 +126,27 @@ impl HuffmanEncoder {
             Self::rebalance(&mut root);
         }
         let mut code_table = CodeTable::new();
-        let mut cur_sym_code = SymbolCode::new();
-        Self::get_codes(&root, &mut cur_sym_code, &mut code_table);
+        Self::get_codes(&root, 0, 0, &mut code_table);
         Self {
             root: Some(root),
             code_table: code_table.clone(),
         }
+    }
+
+    pub fn encode(&self, mtf: MtfTransform) -> HuffmanEncodedResult {
+        let mut buf = Vec::new();
+        let mut writer = BitWriter::endian(&mut buf, BigEndian);
+        for idx in mtf.indices {
+            let symbol = match idx {
+                MtfIndex::RunA => 0usize,
+                MtfIndex::RunB => 1,
+                MtfIndex::Val(v) => v as usize + 1,
+            };
+            let SymbolCode { code, width } = self.code_table.get(&symbol).unwrap(); // TODO: error handling
+            let _ = writer.write_var(*width as u32, *code); // TODO: error handling
+        }
+        let _ = writer.byte_align(); // TODO: error handling
+        HuffmanEncodedResult {}
     }
 
     pub(crate) fn empty() -> Self {
@@ -162,26 +184,48 @@ impl HuffmanEncoder {
     }
 
     /// Build code table for Huffman tree by traversing the tree with a DFS
-    fn get_codes(node: &Node, current_symbol_code: &mut SymbolCode, code_table: &mut CodeTable) {
+    ///
+    /// Method: we start with the current_symbol_code of 0 and a code width of 0. For every left
+    /// branch we traverse, we shift the current code 1 to the left and increase the code width
+    /// by 1. For every right branch, we traverse, we shift the current code 1 to the left and OR
+    /// a 1 into the current position, then increase width by 1. When we encounter a leaf, we
+    /// write the symbol and its current code in to the code table.
+    fn get_codes(
+        node: &Node,
+        current_symbol_code: u32,
+        code_width: u8,
+        code_table: &mut CodeTable,
+    ) {
         match (&node.left, &node.right) {
             (None, None) => {
                 // leaf, so save the code table entry
-                code_table.insert(node.symbol, current_symbol_code.clone());
+                code_table.insert(
+                    node.symbol.unwrap(),
+                    SymbolCode {
+                        code: current_symbol_code,
+                        width: code_width,
+                    },
+                );
             }
             (None, Some(right)) => {
-                current_symbol_code.push(true);
-                Self::get_codes(&right, current_symbol_code, code_table);
+                Self::get_codes(
+                    &right,
+                    1 | current_symbol_code << 1,
+                    code_width + 1, // panic on overflow which is probably good?
+                    code_table,
+                );
             }
             (Some(left), None) => {
-                current_symbol_code.push(false);
-                Self::get_codes(&left, current_symbol_code, code_table);
+                Self::get_codes(&left, current_symbol_code << 1, code_width + 1, code_table);
             }
             (Some(left), Some(right)) => {
-                let mut current_symbol_code_left = current_symbol_code.clone();
-                current_symbol_code_left.push(false); // for the left branch
-                current_symbol_code.push(true); // for the right branch
-                Self::get_codes(&left, &mut current_symbol_code_left, code_table);
-                Self::get_codes(&right, current_symbol_code, code_table);
+                Self::get_codes(&left, current_symbol_code << 1, code_width + 1, code_table);
+                Self::get_codes(
+                    &right,
+                    1 | (current_symbol_code << 1),
+                    code_width + 1,
+                    code_table,
+                );
             }
         }
     }
